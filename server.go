@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,16 +15,25 @@ type info struct {
 	path        string
 	lastSync    uint32
 	lastPckSend HeaderFlag
+	key         [32]byte
 }
 
 type Server struct {
 	sessions map[SessionID]*info
+	rsa      *rsa.PrivateKey
 }
 
-func New() *Server {
+func New() (*Server, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+
+	if err != nil {
+		return nil, err
+	}
+
 	return &Server{
 		sessions: make(map[SessionID]*info),
-	}
+		rsa:      key,
+	}, nil
 }
 
 func (server *Server) handlePacket(conn *net.UDPConn, addr *net.UDPAddr, rPacket *Packet) {
@@ -33,7 +44,40 @@ func (server *Server) handlePacket(conn *net.UDPConn, addr *net.UDPAddr, rPacket
 	case Ack:
 		server.handleAck(conn, addr, rPacket)
 		break
+	case Resend:
+		server.resend(conn, addr, rPacket)
 	}
+}
+
+func (server *Server) resend(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet) {
+	resend, err := pck.GetUint32Payload()
+	if err != nil {
+		panic(err)
+	}
+
+	path := server.sessions[pck.sid].path
+	file, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	// This should be different
+	offset := (int64(resend) - 3) * (PacketSize - int64(HeaderSize))
+	// fmt.Printf("Requested Sync: %v, Calculated Offset: %v\n", resend, offset)
+	buf := make([]byte, PacketSize-HeaderSize)
+
+	_, err = file.ReadAt(buf, offset)
+	if err != nil && !errors.Is(err, io.EOF) {
+		panic(err)
+	}
+
+	fmt.Printf("Resending Packet %v\n", resend)
+
+	resendPck := NewResendFile(pck, buf)
+
+	conn.WriteToUDP(resendPck.ToBytes(), addr)
+
 }
 
 func (server *Server) handleAck(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet) {
@@ -88,11 +132,7 @@ func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet
 	if err != nil {
 		panic(err)
 	}
-
-	// // ONLY FOR TEST
-	// firstPacket := true
-	// var firstFilePckt Packet
-	// // END TEST
+	defer file.Close()
 
 	buf := make([]byte, PacketSize-HeaderSize)
 	filePck := pck
@@ -107,26 +147,8 @@ func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet
 		filePck = NewFile(filePck, buf[:r])
 		fmt.Printf("Sending File Packet %v\n", filePck.sync)
 
-		// // ONLY FOR TEST
-		// if firstPacket {
-		// 	firstPacket = false
-		// 	firstFilePckt = Packet{
-		// 		sid:        filePck.sid,
-		// 		flag:       File,
-		// 		sync:       filePck.sync,
-		// 		dataLength: filePck.dataLength,
-		// 		data:       make([]byte, filePck.dataLength),
-		// 	}
-
-		// 	copy(firstFilePckt.data, filePck.data)
-
-		// } else {
-		// 	// END
 		conn.WriteToUDP(filePck.ToBytes(), addr)
-		// }
 	}
-
-	// conn.WriteToUDP(firstFilePckt.ToBytes(), addr)
 
 	eodPck := NewEnd(filePck)
 	server.sessions[pck.sid].lastSync = eodPck.sync

@@ -1,16 +1,19 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"sort"
+	"time"
 )
 
 func GetFile(path string) {
 	request := NewRequest(path)
 
 	udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
+	// udpAddr, err := net.ResolveUDPAddr("udp", "192.168.2.145:13374")
 
 	if err != nil {
 		fmt.Println(err)
@@ -31,7 +34,7 @@ func GetFile(path string) {
 	}
 
 	bytes := make([]byte, PacketSize)
-	file, err := os.Create(path + ".recv")
+	file, err := os.Create("out/" + hex.EncodeToString(request.sid[:]) + ".recv")
 	if err != nil {
 		panic(err)
 	}
@@ -88,61 +91,72 @@ func GetFile(path string) {
 	})
 
 	lostPackets := make([]uint32, 0)
-	lastSync := ackPck.sync
-	needResend := false
-	for _, i := range recvPackets {
-		if lastSync+1 != i {
+
+	for i := ackPck.sync + 1; i < endPacket.sync; i++ {
+		if b, _ := contains(recvPackets, i); !b {
 			lostPackets = append(lostPackets, i)
-			needResend = true
 		}
-		lastSync = i
 	}
 
-	if !needResend {
-		ack := NewAck(&endPacket)
-		conn.Write(ack.ToBytes())
+	for _, i := range lostPackets {
+		fmt.Println(i)
 	}
 
-	// sort.Slice(recvPackets, func(i, j int) bool {
-	// 	pckI := recvPackets[i]
-	// 	pckJ := recvPackets[j]
-	// 	return pckI.sync < pckJ.sync
-	// })
+	lastPacket := ackPck
 
-	// endPacketFound := false
-	// needResend := false
-	// lastSync := request.sync
-	// fmt.Println(lastSync)
-	// endPacketSync, err := endPacket.GetSync()
-	// if err != nil {
-	// 	panic(err)
-	// }
+	for {
+		if len(lostPackets) == 0 {
+			break
+		}
 
-	// for _, packet := range recvPackets {
-	// 	// fmt.Println(packet.sync)
-	// 	// offset := (int64(packet.sync)-1)*PacketSize - int64(HeaderSize)
-	// 	// data := packet.data
-	// 	// fmt.Printf("Data: %v Offset: %v\n", data, offset)
+		for _, sync := range lostPackets {
 
-	// 	if lastSync+1 != packet.sync {
-	// 		fmt.Printf("Need Packet %v resend\n", lastSync+1)
-	// 		// Add to slice
-	// 		needResend = true
-	// 		continue
-	// 	}
+			fmt.Printf("Request resend for %v\n", sync)
+			resend := NewResend(uint32(sync), lastPacket)
+			conn.Write(resend.ToBytes())
+			lastPacket = resend
 
-	// 	fmt.Printf("Writing Packet %v to file\n", packet.sync)
+			conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 
-	// 	_, err = file.Write(packet.data)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
+			_, _, err = conn.ReadFrom(bytes)
+			if err != nil {
+				if e, ok := err.(net.Error); !ok || !e.Timeout() {
+					// If it's not a timeout, log the error as usual
+					panic(err)
+				}
+				continue
+			}
 
-	// 	if packet.sync == endPacketSync {
-	// 		endPacketFound = true
-	// 	}
+			pck := PacketFromBytes(bytes)
+			offset := (int64(pck.sync) - int64(ackPck.sync+1)) * (PacketSize - int64(HeaderSize))
+			// fmt.Printf("Sync: %v, Offset: %v\n", pck.sync, offset)
 
-	// 	lastSync = packet.sync
-	// }
+			_, err = file.WriteAt(pck.data, offset)
+			if err != nil {
+				panic(err)
+			}
 
+			_, index := contains(lostPackets, pck.sync)
+			fmt.Printf("Removing sync %v from LostPackets\n", pck.sync)
+			lostPackets = remove(lostPackets, index)
+
+		}
+	}
+
+	ack := NewAck(&endPacket)
+	conn.Write(ack.ToBytes())
+}
+
+func remove(s []uint32, i int) []uint32 {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
+}
+
+func contains(s []uint32, e uint32) (bool, int) {
+	for i, a := range s {
+		if a == e {
+			return true, i
+		}
+	}
+	return false, 0
 }
