@@ -11,7 +11,6 @@ Points that might or might not get looked at:
 
 - No clue about Performance
 - Should add PacketSize to PTE and or to request to allow for dynamic Packet size
-- Need to add Resend Packet, if a Packet is lost right now, it wont get resend
 - Needs timeouts, so server doesnt get bombed with trash data
 - Needs to handle Errors correctly not just panic
 - Tests would be nice but probably wont happen
