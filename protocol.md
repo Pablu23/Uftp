@@ -2,9 +2,9 @@
 
 // Handshake or encryption setup here
 1. Client sends request for file
-2. Server answers with error or how many packets to expect
+2. Server answers with error or FileSize (possibly also Packetsize)
 3. Client ack
-4. Server sends Packets with Sync to keep track
+4. Server sends File Packets with Sync to keep track
 5. Server sends Sync End Packet
 // LOOP
 6. If Packets were lost client sends request to resend specific Sync Packets
