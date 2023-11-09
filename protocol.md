@@ -26,6 +26,6 @@ Ack = uint32 little endian Sync number to Acknowledge
 
 File = Raw file bytes
 
-End = uint32 little endian Sync number to Acknowledge
+End = uint32 little endian Sync number of last File Packet
 
 Resend = uint32 little endian Sync number to Resend
