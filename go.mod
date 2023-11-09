@@ -1,3 +1,3 @@
-module pablu/hellogo
+module pablu/uftp
 
 go 1.21.1
