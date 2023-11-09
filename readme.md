@@ -2,8 +2,8 @@
 
 Probably has bugs
 Not secure at all, for example: 
-    - Path exploits
-    - unencrypted Communication
+- Path exploits
+- unencrypted Communication
 
 Those two things are going to get fixed
 
