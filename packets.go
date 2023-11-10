@@ -5,11 +5,22 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 const HeaderSize int = 32 + 1 + 4 + 4
+const SecureHeaderSize int = 1 + 42 + 32 + 4
 
 type SessionID [32]byte
+
+type SecurePacket struct {
+	isRsa         byte // 0 = false everything else is true
+	nonce         [24]byte
+	sid           SessionID
+	dataLength    uint32
+	encryptedData []byte
+}
 
 type Packet struct {
 	// headerLength uint32
@@ -18,6 +29,84 @@ type Packet struct {
 	sync       uint32
 	dataLength uint32
 	data       []byte
+}
+
+func NewSymetricSecurePacket(key [32]byte, pck *Packet) *SecurePacket {
+	sid := pck.sid
+	data := pck.ToBytes()
+	aead, err := chacha20poly1305.NewX(key[:])
+	if err != nil {
+		panic(err)
+	}
+
+	nonce := make([]byte, 24)
+	if _, err = rand.Read(nonce); err != nil {
+		panic(err)
+	}
+
+	encrypted := make([]byte, len(data)+aead.Overhead())
+	encrypted = aead.Seal(nil, nonce, data, nil)
+
+	return &SecurePacket{
+		isRsa:         0,
+		nonce:         [24]byte(nonce),
+		sid:           sid,
+		dataLength:    uint32(len(encrypted)),
+		encryptedData: encrypted,
+	}
+}
+
+func SecurePacketFromBytes(bytes []byte) SecurePacket {
+	isRsa := bytes[0]
+	nonce := bytes[1:25]
+	sid := SessionID(bytes[25:57])
+	length := binary.LittleEndian.Uint32(bytes[57:61])
+	enc := bytes[61 : 61+length]
+
+	return SecurePacket{
+		isRsa:         isRsa,
+		nonce:         [24]byte(nonce),
+		sid:           sid,
+		encryptedData: enc,
+		dataLength:    length,
+	}
+}
+
+func (secPck *SecurePacket) ToBytes() []byte {
+	arr := make([]byte, SecureHeaderSize+len(secPck.encryptedData))
+	arr[0] = secPck.isRsa
+	copy(arr[1:25], secPck.nonce[:])
+	copy(arr[25:57], secPck.sid[:])
+	binary.LittleEndian.PutUint32(arr[57:61], secPck.dataLength)
+	copy(arr[61:], secPck.encryptedData)
+
+	return arr
+}
+
+func (secPck *SecurePacket) ExtractPacket(key [32]byte) (*Packet, error) {
+	aead, err := chacha20poly1305.NewX(key[:])
+	if err != nil {
+		panic(err)
+	}
+	data, err := aead.Open(nil, secPck.nonce[:], secPck.encryptedData, nil)
+	if err != nil {
+		return nil, err
+	}
+	packet := PacketFromBytes(data)
+	return &packet, nil
+}
+
+func NewRsaPacket(sid SessionID, key [32]byte) *SecurePacket {
+	return &SecurePacket{
+		isRsa:         1,
+		nonce:         [24]byte(make([]byte, 24)),
+		sid:           sid,
+		encryptedData: key[:],
+	}
+}
+
+func (secPck *SecurePacket) ExtractKey( /*RSA HERE LATER*/ ) []byte {
+	return secPck.encryptedData[:32]
 }
 
 func PacketFromBytes(bytes []byte) Packet {

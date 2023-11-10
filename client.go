@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -9,8 +10,24 @@ import (
 	"time"
 )
 
+func SendPacket(pck *Packet, key [32]byte, conn *net.UDPConn) {
+	secPck := NewSymetricSecurePacket(key, pck)
+	fmt.Println(secPck)
+	if _, err := conn.Write(secPck.ToBytes()); err != nil {
+		panic(err)
+	}
+}
+
 func GetFile(path string) {
 	request := NewRequest(path)
+
+	k := make([]byte, 32)
+	_, err := rand.Read(k)
+	if err != nil {
+		panic(err)
+	}
+	key := [32]byte(k)
+	keyExchangePck := NewRsaPacket(request.sid, key)
 
 	udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
 	// udpAddr, err := net.ResolveUDPAddr("udp", "192.168.2.145:13374")
@@ -28,10 +45,12 @@ func GetFile(path string) {
 		os.Exit(1)
 	}
 
-	_, err = conn.Write(request.ToBytes())
+	_, err = conn.Write(keyExchangePck.ToBytes())
 	if err != nil {
 		panic(err)
 	}
+
+	SendPacket(request, key, conn)
 
 	bytes := make([]byte, PacketSize)
 	file, err := os.Create("out/" + hex.EncodeToString(request.sid[:]) + ".recv")
@@ -57,7 +76,7 @@ func GetFile(path string) {
 	file.Truncate(int64(size))
 
 	ackPck := NewAck(&pck)
-	conn.Write(ackPck.ToBytes())
+	SendPacket(ackPck, key, conn)
 
 	recvPackets := make([]uint32, 0)
 	var endPacket Packet
@@ -113,7 +132,7 @@ func GetFile(path string) {
 
 			fmt.Printf("Request resend for %v\n", sync)
 			resend := NewResend(uint32(sync), lastPacket)
-			conn.Write(resend.ToBytes())
+			SendPacket(resend, key, conn)
 			lastPacket = resend
 
 			conn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -144,7 +163,7 @@ func GetFile(path string) {
 	}
 
 	ack := NewAck(&endPacket)
-	conn.Write(ack.ToBytes())
+	SendPacket(ack, key, conn)
 }
 
 func remove(s []uint32, i int) []uint32 {

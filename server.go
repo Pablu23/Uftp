@@ -119,11 +119,9 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet)
 	ptePck := NewPte(uint32(fileSize), pck)
 	conn.WriteToUDP(ptePck.ToBytes(), addr)
 
-	server.sessions[pck.sid] = &info{
-		path:        path,
-		lastSync:    ptePck.sync,
-		lastPckSend: ptePck.flag,
-	}
+	server.sessions[pck.sid].path = path
+	server.sessions[pck.sid].lastSync = ptePck.sync
+	server.sessions[pck.sid].lastPckSend = ptePck.flag
 }
 
 func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *Packet) {
@@ -180,7 +178,27 @@ func (server *Server) Serve() {
 			fmt.Println(err)
 			return
 		}
-		pck := PacketFromBytes(buf[:])
-		go server.handlePacket(conn, addr, &pck)
+
+		secPck := SecurePacketFromBytes(buf[:])
+
+		fmt.Println(secPck)
+
+		if secPck.isRsa == 0 {
+			key := server.sessions[secPck.sid].key
+			pck, err := secPck.ExtractPacket(key)
+			if err != nil {
+				fmt.Println(err)
+				//fmt.Println("Could not establish secure connection")
+			}
+			go server.handlePacket(conn, addr, pck)
+		} else {
+			key := secPck.ExtractKey()
+			fmt.Println(key)
+			fmt.Println(secPck.sid)
+			server.sessions[secPck.sid] = &info{
+				key: [32]byte(key),
+			}
+
+		}
 	}
 }
