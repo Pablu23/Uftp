@@ -2,6 +2,8 @@ module pablu/uftp
 
 go 1.21.1
 
-require golang.org/x/crypto v0.15.0
+replace internal/common => ./internal/common
 
-require golang.org/x/sys v0.14.0 // indirect
+replace internal/client => ./internal/client
+
+replace internal/server => ./internal/server

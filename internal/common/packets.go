@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	"crypto/rand"
@@ -9,30 +9,32 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+const PacketSize = 504
+
 const HeaderSize int = 32 + 1 + 4 + 4
 const SecureHeaderSize int = 1 + 42 + 32 + 4
 
 type SessionID [32]byte
 
 type SecurePacket struct {
-	isRsa         byte // 0 = false everything else is true
-	nonce         [24]byte
-	sid           SessionID
-	dataLength    uint32
-	encryptedData []byte
+	IsRsa         byte // 0 = false everything else is true
+	Nonce         [24]byte
+	Sid           SessionID
+	DataLength    uint32
+	EncryptedData []byte
 }
 
 type Packet struct {
 	// headerLength uint32
-	sid        SessionID
-	flag       HeaderFlag
-	sync       uint32
-	dataLength uint32
-	data       []byte
+	Sid        SessionID
+	Flag       HeaderFlag
+	Sync       uint32
+	DataLength uint32
+	Data       []byte
 }
 
 func NewSymetricSecurePacket(key [32]byte, pck *Packet) *SecurePacket {
-	sid := pck.sid
+	sid := pck.Sid
 	data := pck.ToBytes()
 	aead, err := chacha20poly1305.NewX(key[:])
 	if err != nil {
@@ -48,11 +50,11 @@ func NewSymetricSecurePacket(key [32]byte, pck *Packet) *SecurePacket {
 	encrypted = aead.Seal(nil, nonce, data, nil)
 
 	return &SecurePacket{
-		isRsa:         0,
-		nonce:         [24]byte(nonce),
-		sid:           sid,
-		dataLength:    uint32(len(encrypted)),
-		encryptedData: encrypted,
+		IsRsa:         0,
+		Nonce:         [24]byte(nonce),
+		Sid:           sid,
+		DataLength:    uint32(len(encrypted)),
+		EncryptedData: encrypted,
 	}
 }
 
@@ -64,49 +66,50 @@ func SecurePacketFromBytes(bytes []byte) SecurePacket {
 	enc := bytes[61 : 61+length]
 
 	return SecurePacket{
-		isRsa:         isRsa,
-		nonce:         [24]byte(nonce),
-		sid:           sid,
-		encryptedData: enc,
-		dataLength:    length,
+		IsRsa:         isRsa,
+		Nonce:         [24]byte(nonce),
+		Sid:           sid,
+		DataLength:    length,
+		EncryptedData: enc,
 	}
 }
 
 func (secPck *SecurePacket) ToBytes() []byte {
-	arr := make([]byte, SecureHeaderSize+len(secPck.encryptedData))
-	arr[0] = secPck.isRsa
-	copy(arr[1:25], secPck.nonce[:])
-	copy(arr[25:57], secPck.sid[:])
-	binary.LittleEndian.PutUint32(arr[57:61], secPck.dataLength)
-	copy(arr[61:], secPck.encryptedData)
+	arr := make([]byte, SecureHeaderSize+len(secPck.EncryptedData))
+	arr[0] = secPck.IsRsa
+	copy(arr[1:25], secPck.Nonce[:])
+	copy(arr[25:57], secPck.Sid[:])
+	binary.LittleEndian.PutUint32(arr[57:61], secPck.DataLength)
+	copy(arr[61:], secPck.EncryptedData)
 
 	return arr
 }
 
-func (secPck *SecurePacket) ExtractPacket(key [32]byte) (*Packet, error) {
+func (secPck *SecurePacket) ExtractPacket(key [32]byte) (Packet, error) {
 	aead, err := chacha20poly1305.NewX(key[:])
 	if err != nil {
 		panic(err)
 	}
-	data, err := aead.Open(nil, secPck.nonce[:], secPck.encryptedData, nil)
+	data, err := aead.Open(nil, secPck.Nonce[:], secPck.EncryptedData, nil)
 	if err != nil {
-		return nil, err
+		return Packet{}, err
 	}
+	// fmt.Println(data)
 	packet := PacketFromBytes(data)
-	return &packet, nil
+	return packet, nil
 }
 
 func NewRsaPacket(sid SessionID, key [32]byte) *SecurePacket {
 	return &SecurePacket{
-		isRsa:         1,
-		nonce:         [24]byte(make([]byte, 24)),
-		sid:           sid,
-		encryptedData: key[:],
+		IsRsa:         1,
+		Nonce:         [24]byte(make([]byte, 24)),
+		Sid:           sid,
+		EncryptedData: key[:],
 	}
 }
 
 func (secPck *SecurePacket) ExtractKey( /*RSA HERE LATER*/ ) []byte {
-	return secPck.encryptedData[:32]
+	return secPck.EncryptedData[:32]
 }
 
 func PacketFromBytes(bytes []byte) Packet {
@@ -115,24 +118,24 @@ func PacketFromBytes(bytes []byte) Packet {
 	sync := binary.LittleEndian.Uint32(bytes[33:37])
 	dataLength := binary.LittleEndian.Uint32(bytes[37:41])
 	pck := Packet{
-		sid:        sid,
-		flag:       flag,
-		sync:       sync,
-		dataLength: dataLength,
-		data:       bytes[HeaderSize : HeaderSize+int(dataLength)],
+		Sid:        sid,
+		Flag:       flag,
+		Sync:       sync,
+		DataLength: dataLength,
+		Data:       bytes[HeaderSize : HeaderSize+int(dataLength)],
 	}
 	return pck
 }
 
 func NewAck(pckToAck *Packet) *Packet {
 	data := make([]byte, 4)
-	binary.LittleEndian.PutUint32(data, pckToAck.sync)
+	binary.LittleEndian.PutUint32(data, pckToAck.Sync)
 	return &Packet{
-		sid:        pckToAck.sid,
-		flag:       Ack,
-		sync:       pckToAck.sync + 1,
-		dataLength: uint32(4),
-		data:       data,
+		Sid:        pckToAck.Sid,
+		Flag:       Ack,
+		Sync:       pckToAck.Sync + 1,
+		DataLength: uint32(4),
+		Data:       data,
 	}
 }
 
@@ -145,59 +148,59 @@ func NewRequest(path string) *Packet {
 	}
 
 	return &Packet{
-		sid:        SessionID(buf),
-		flag:       Request,
-		sync:       0,
-		dataLength: uint32(len(data)),
-		data:       data,
+		Sid:        SessionID(buf),
+		Flag:       Request,
+		Sync:       0,
+		DataLength: uint32(len(data)),
+		Data:       data,
 	}
 }
 
 func (pck *Packet) GetUint32Payload() (uint32, error) {
-	flag := pck.flag
+	flag := pck.Flag
 	if flag != PTE && flag != Ack && flag != End && flag != Resend {
 		return 0, errors.New(fmt.Sprintf("Can not get Sync from Packet Type with flag: %v", flag))
 	}
-	return binary.LittleEndian.Uint32(pck.data), nil
+	return binary.LittleEndian.Uint32(pck.Data), nil
 }
 
 func (pck *Packet) GetFilePath() (string, error) {
-	if pck.flag != Request {
+	if pck.Flag != Request {
 		return "", errors.New("Can not get FilePath from Packet that is not Request")
 	}
-	return string(pck.data), nil
+	return string(pck.Data), nil
 }
 
 func NewResendFile(resendPck *Packet, data []byte) *Packet {
 	sync, _ := resendPck.GetUint32Payload()
 	return &Packet{
-		sid:        resendPck.sid,
-		flag:       File,
-		sync:       sync,
-		dataLength: uint32(len(data)),
-		data:       data,
+		Sid:        resendPck.Sid,
+		Flag:       File,
+		Sync:       sync,
+		DataLength: uint32(len(data)),
+		Data:       data,
 	}
 }
 
 func NewFile(lastPck *Packet, data []byte) *Packet {
 	return &Packet{
-		sid:        lastPck.sid,
-		flag:       File,
-		sync:       lastPck.sync + 1,
-		dataLength: uint32(len(data)),
-		data:       data,
+		Sid:        lastPck.Sid,
+		Flag:       File,
+		Sync:       lastPck.Sync + 1,
+		DataLength: uint32(len(data)),
+		Data:       data,
 	}
 }
 
 func NewEnd(lastFilePck *Packet) *Packet {
 	data := make([]byte, 4)
-	binary.LittleEndian.PutUint32(data, lastFilePck.sync)
+	binary.LittleEndian.PutUint32(data, lastFilePck.Sync)
 	return &Packet{
-		sid:        lastFilePck.sid,
-		flag:       End,
-		sync:       lastFilePck.sync + 1,
-		dataLength: uint32(4),
-		data:       data,
+		Sid:        lastFilePck.Sid,
+		Flag:       End,
+		Sync:       lastFilePck.Sync + 1,
+		DataLength: uint32(4),
+		Data:       data,
 	}
 }
 
@@ -205,11 +208,11 @@ func NewResend(sync uint32, lastPck *Packet) *Packet {
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, sync)
 	return &Packet{
-		sid:        lastPck.sid,
-		flag:       Resend,
-		sync:       lastPck.sync + 1,
-		dataLength: uint32(4),
-		data:       data,
+		Sid:        lastPck.Sid,
+		Flag:       Resend,
+		Sync:       lastPck.Sync + 1,
+		DataLength: uint32(4),
+		Data:       data,
 	}
 }
 
@@ -217,21 +220,21 @@ func NewPte(fileSize uint32, lastPck *Packet) *Packet {
 	data := make([]byte, 4)
 	binary.LittleEndian.PutUint32(data, fileSize)
 	return &Packet{
-		sid:        lastPck.sid,
-		flag:       PTE,
-		sync:       lastPck.sync + 1,
-		dataLength: uint32(4),
-		data:       data,
+		Sid:        lastPck.Sid,
+		Flag:       PTE,
+		Sync:       lastPck.Sync + 1,
+		DataLength: uint32(4),
+		Data:       data,
 	}
 }
 
 func (pck *Packet) ToBytes() []byte {
-	arr := make([]byte, HeaderSize+int(pck.dataLength))
-	arr[0] = byte(pck.flag)
-	copy(arr[1:33], pck.sid[:])
-	binary.LittleEndian.PutUint32(arr[33:37], pck.sync)
-	binary.LittleEndian.PutUint32(arr[37:41], pck.dataLength)
-	copy(arr[41:], pck.data)
+	arr := make([]byte, HeaderSize+int(pck.DataLength))
+	arr[0] = byte(pck.Flag)
+	copy(arr[1:33], pck.Sid[:])
+	binary.LittleEndian.PutUint32(arr[33:37], pck.Sync)
+	binary.LittleEndian.PutUint32(arr[37:41], pck.DataLength)
+	copy(arr[41:], pck.Data)
 
 	return arr
 }
