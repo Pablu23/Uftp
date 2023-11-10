@@ -3,7 +3,6 @@
 Probably has bugs
 Not secure at all, for example: 
 - Path exploits
-- unencrypted Communication
 
 Those two things are going to get fixed
 
@@ -18,5 +17,9 @@ Points that might or might not get looked at:
 - Maybe Upload Feature
 - Simple Users auth so you can only get your Files
 - If Users maybe groups so you can share Files with your Friends (very unlikly to happen)
-- Better Go Project structure
 - Comments
+
+Known Bugs / Errors / Fix list:
+- Pte Packet is received twice from Client
+- No Rsa Encryption for symmetric Key
+- Path Exploits (will get changed to only allow Files in curr exe Path or Configurable Path)
