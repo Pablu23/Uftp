@@ -46,7 +46,6 @@ func (server *Server) sendPacket(conn *net.UDPConn, addr *net.UDPAddr, pck *comm
 	if _, err := conn.WriteToUDP(secPck.ToBytes(), addr); err != nil {
 		panic(err)
 	}
-	conn.WriteToUDP(secPck.ToBytes(), addr)
 }
 
 func (server *Server) handlePacket(conn *net.UDPConn, addr *net.UDPAddr, rPacket *common.Packet) {
