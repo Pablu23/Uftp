@@ -34,7 +34,7 @@ func ReceivePacket(key [32]byte, conn *net.UDPConn) common.Packet {
 		panic(err)
 	}
 
-	fmt.Printf("Decrypted Packet, Sync: %v, Type: %v\n", pck.Sync, pck.Flag)
+	// fmt.Printf("Decrypted Packet, Sync: %v, Type: %v\n", pck.Sync, pck.Flag)
 
 	return pck
 }
@@ -63,7 +63,7 @@ func ReceivePacketWithTimeout(key [32]byte, conn *net.UDPConn) (common.Packet, b
 	return pck, true
 }
 
-func GetFile(path string) {
+func GetFile(path string, address string) {
 	request := common.NewRequest(path)
 
 	k := make([]byte, 32)
@@ -74,8 +74,8 @@ func GetFile(path string) {
 	key := [32]byte(k)
 	keyExchangePck := common.NewRsaPacket(request.Sid, key)
 
-	udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
-	// udpAddr, err := net.ResolveUDPAddr("udp", "192.168.2.145:13374")
+	// udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
+	udpAddr, err := net.ResolveUDPAddr("udp", address)
 
 	if err != nil {
 		fmt.Println(err)

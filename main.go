@@ -14,6 +14,6 @@ func main() {
 		}
 		server.Serve()
 	} else {
-		client.GetFile(os.Args[2])
+		client.GetFile(os.Args[2], os.Args[3])
 	}
 }

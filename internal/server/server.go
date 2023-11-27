@@ -40,7 +40,7 @@ func New() (*Server, error) {
 func (server *Server) sendPacket(conn *net.UDPConn, addr *net.UDPAddr, pck *common.Packet) {
 	key := server.sessions[pck.Sid].key
 
-	fmt.Printf("Sending Packet, Sync: %v, Type: %v\n", pck.Sync, pck.Flag)
+	// fmt.Printf("Sending Packet, Sync: %v, Type: %v\n", pck.Sync, pck.Flag)
 
 	secPck := common.NewSymetricSecurePacket(key, pck)
 	if _, err := conn.WriteToUDP(secPck.ToBytes(), addr); err != nil {
