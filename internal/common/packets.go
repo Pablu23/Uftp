@@ -11,10 +11,12 @@ import (
 
 const PacketSize = 504
 
-const HeaderSize int = 32 + 1 + 4 + 4
-const SecureHeaderSize int = 1 + 42 + 32 + 4
+const HeaderSize int = 1 + 4
+const SecureHeaderSize int = 1 + 24 + 8 + 4
 
-type SessionID [32]byte
+const MaxDataSize = PacketSize - HeaderSize - SecureHeaderSize - 16 // AEAD Overhead
+
+type SessionID [8]byte
 
 type SecurePacket struct {
 	IsRsa         byte // 0 = false everything else is true
@@ -25,12 +27,13 @@ type SecurePacket struct {
 }
 
 type Packet struct {
-	// headerLength uint32
+	Flag HeaderFlag
+	Sync uint32
+	Data []byte
+
+	// NOT IN BYTES THAT ARE SENT
 	Sid        SessionID
-	Flag       HeaderFlag
-	Sync       uint32
 	DataLength uint32
-	Data       []byte
 }
 
 func NewSymetricSecurePacket(key [32]byte, pck *Packet) *SecurePacket {
@@ -61,9 +64,9 @@ func NewSymetricSecurePacket(key [32]byte, pck *Packet) *SecurePacket {
 func SecurePacketFromBytes(bytes []byte) SecurePacket {
 	isRsa := bytes[0]
 	nonce := bytes[1:25]
-	sid := SessionID(bytes[25:57])
-	length := binary.LittleEndian.Uint32(bytes[57:61])
-	enc := bytes[61 : 61+length]
+	sid := SessionID(bytes[25:33])
+	length := binary.LittleEndian.Uint32(bytes[33:37])
+	enc := bytes[37 : SecureHeaderSize+int(length)]
 
 	return SecurePacket{
 		IsRsa:         isRsa,
@@ -75,12 +78,14 @@ func SecurePacketFromBytes(bytes []byte) SecurePacket {
 }
 
 func (secPck *SecurePacket) ToBytes() []byte {
-	arr := make([]byte, SecureHeaderSize+len(secPck.EncryptedData))
+	encSize := int(secPck.DataLength)
+
+	arr := make([]byte, SecureHeaderSize+encSize)
 	arr[0] = secPck.IsRsa
 	copy(arr[1:25], secPck.Nonce[:])
-	copy(arr[25:57], secPck.Sid[:])
-	binary.LittleEndian.PutUint32(arr[57:61], secPck.DataLength)
-	copy(arr[61:], secPck.EncryptedData)
+	copy(arr[25:33], secPck.Sid[:])
+	binary.LittleEndian.PutUint32(arr[33:37], secPck.DataLength)
+	copy(arr[37:SecureHeaderSize+encSize], secPck.EncryptedData)
 
 	return arr
 }
@@ -95,7 +100,7 @@ func (secPck *SecurePacket) ExtractPacket(key [32]byte) (Packet, error) {
 		return Packet{}, err
 	}
 	// fmt.Println(data)
-	packet := PacketFromBytes(data)
+	packet := PacketFromBytes(data, secPck.DataLength-uint32(HeaderSize)-uint32(aead.Overhead()), secPck.Sid)
 	return packet, nil
 }
 
@@ -105,6 +110,7 @@ func NewRsaPacket(sid SessionID, key [32]byte) *SecurePacket {
 		Nonce:         [24]byte(make([]byte, 24)),
 		Sid:           sid,
 		EncryptedData: key[:],
+		DataLength:    32,
 	}
 }
 
@@ -112,11 +118,9 @@ func (secPck *SecurePacket) ExtractKey( /*RSA HERE LATER*/ ) []byte {
 	return secPck.EncryptedData[:32]
 }
 
-func PacketFromBytes(bytes []byte) Packet {
+func PacketFromBytes(bytes []byte, dataLength uint32, sid SessionID) Packet {
 	flag := HeaderFlag(bytes[0])
-	sid := SessionID(bytes[1:33])
-	sync := binary.LittleEndian.Uint32(bytes[33:37])
-	dataLength := binary.LittleEndian.Uint32(bytes[37:41])
+	sync := binary.LittleEndian.Uint32(bytes[1:5])
 	pck := Packet{
 		Sid:        sid,
 		Flag:       flag,
@@ -231,10 +235,8 @@ func NewPte(fileSize uint32, lastPck *Packet) *Packet {
 func (pck *Packet) ToBytes() []byte {
 	arr := make([]byte, HeaderSize+int(pck.DataLength))
 	arr[0] = byte(pck.Flag)
-	copy(arr[1:33], pck.Sid[:])
-	binary.LittleEndian.PutUint32(arr[33:37], pck.Sync)
-	binary.LittleEndian.PutUint32(arr[37:41], pck.DataLength)
-	copy(arr[41:], pck.Data)
+	binary.LittleEndian.PutUint32(arr[1:5], pck.Sync)
+	copy(arr[HeaderSize:HeaderSize+int(pck.DataLength)], pck.Data)
 
 	return arr
 }

@@ -1,5 +1,5 @@
 build:
-	go build -o bin/helloGo main.go client.go packets.go server.go
+	go build -o bin/uftp main.go
 
 server:
 	go run main.go server 

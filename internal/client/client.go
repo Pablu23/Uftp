@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sort"
 	"time"
+
+	"github.com/kelindar/bitmap"
 )
 
 func SendPacket(pck *common.Packet, key [32]byte, conn *net.UDPConn) {
@@ -19,7 +20,7 @@ func SendPacket(pck *common.Packet, key [32]byte, conn *net.UDPConn) {
 }
 
 func ReceivePacket(key [32]byte, conn *net.UDPConn) common.Packet {
-	bytes := make([]byte, common.PacketSize+common.SecureHeaderSize)
+	bytes := make([]byte, common.PacketSize)
 	_, _, err := conn.ReadFrom(bytes)
 	if err != nil {
 		panic(err)
@@ -29,6 +30,7 @@ func ReceivePacket(key [32]byte, conn *net.UDPConn) common.Packet {
 	pck, err := secPck.ExtractPacket(key)
 
 	if err != nil {
+		fmt.Println(bytes)
 		panic(err)
 	}
 
@@ -114,8 +116,9 @@ func GetFile(path string) {
 	ackPck := common.NewAck(&pck)
 	SendPacket(ackPck, key, conn)
 
-	recvPackets := make([]uint32, 0)
 	var endPacket common.Packet
+
+	var recvPackets bitmap.Bitmap
 
 	for {
 		pck := ReceivePacket(key, conn)
@@ -128,10 +131,9 @@ func GetFile(path string) {
 			continue
 		}
 
-		recvPackets = append(recvPackets, pck.Sync)
+		recvPackets.Set(pck.Sync)
 
-		offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * (common.PacketSize - int64(common.HeaderSize))
-		// fmt.Printf("Sync: %v, Offset: %v\n", pck.Sync, offset)
+		offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * int64(common.MaxDataSize)
 
 		_, err = file.WriteAt(pck.Data, offset)
 		if err != nil {
@@ -139,19 +141,23 @@ func GetFile(path string) {
 		}
 	}
 
-	sort.Slice(recvPackets, func(i, j int) bool {
-		pckI := recvPackets[i]
-		pckJ := recvPackets[j]
-		return pckI < pckJ
-	})
-
 	lostPackets := make([]uint32, 0)
 
-	for i := ackPck.Sync + 1; i < endPacket.Sync; i++ {
-		if b, _ := contains(recvPackets, i); !b {
-			lostPackets = append(lostPackets, i)
-		}
+	var reverse bitmap.Bitmap
+	reverse.Grow(endPacket.Sync)
+	reverse.Ones()
+
+	for i := 0; i <= int(ackPck.Sync); i++ {
+		recvPackets.Set(uint32(i))
 	}
+
+	recvPackets.Xor(reverse)
+
+	recvPackets.Range(func(x uint32) {
+		if x < endPacket.Sync {
+			lostPackets = append(lostPackets, x)
+		}
+	})
 
 	for _, i := range lostPackets {
 		fmt.Println(i)
@@ -177,7 +183,7 @@ func GetFile(path string) {
 				continue
 			}
 
-			offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * (common.PacketSize - int64(common.HeaderSize))
+			offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * int64(common.MaxDataSize)
 			// fmt.Printf("Sync: %v, Offset: %v\n", pck.sync, offset)
 
 			_, err = file.WriteAt(pck.Data, offset)

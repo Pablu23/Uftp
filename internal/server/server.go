@@ -75,8 +75,8 @@ func (server *Server) resend(conn *net.UDPConn, addr *net.UDPAddr, pck *common.P
 	defer file.Close()
 
 	// This should be different
-	offset := (int64(resend) - 3) * (common.PacketSize - int64(common.HeaderSize))
-	buf := make([]byte, common.PacketSize-common.HeaderSize)
+	offset := (int64(resend) - 3) * (int64(common.MaxDataSize))
+	buf := make([]byte, common.MaxDataSize)
 
 	_, err = file.ReadAt(buf, offset)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -138,7 +138,7 @@ func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *common
 	}
 	defer file.Close()
 
-	buf := make([]byte, common.PacketSize-common.HeaderSize)
+	buf := make([]byte, common.MaxDataSize)
 	filePck := pck
 	for {
 		r, err := file.Read(buf)
