@@ -1,13 +1,14 @@
 package client
 
 import (
-	"common"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"time"
+
+	"github.com/Pablu23/Uftp/internal/common"
 
 	"github.com/kelindar/bitmap"
 )

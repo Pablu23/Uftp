@@ -1,7 +1,6 @@
 package server
 
 import (
-	"common"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
@@ -12,6 +11,8 @@ import (
 	"os/signal"
 	"sync"
 	"time"
+
+	"github.com/Pablu23/Uftp/internal/common"
 
 	log "github.com/sirupsen/logrus"
 )

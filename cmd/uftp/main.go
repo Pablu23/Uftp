@@ -1,9 +1,10 @@
 package main
 
 import (
-	"client"
 	"os"
-	"server"
+
+	"github.com/Pablu23/Uftp/internal/client"
+	"github.com/Pablu23/Uftp/internal/server"
 )
 
 func main() {
