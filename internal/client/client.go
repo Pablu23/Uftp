@@ -120,6 +120,21 @@ func GetFile(path string, address string) {
 
 	var recvPackets bitmap.Bitmap
 
+	dataReceived := 0
+
+	go func() {
+		last := 0
+
+		fmt.Print("\033[s")
+
+		for {
+			fmt.Print("\033[u\033[K")
+			fmt.Printf("Throughput: %v Mbit/s\n", ((dataReceived-last)*8)/1024/1024)
+			last = dataReceived
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
 	for {
 		pck := ReceivePacket(key, conn)
 		if pck.Flag == common.End {
@@ -132,13 +147,13 @@ func GetFile(path string, address string) {
 		}
 
 		recvPackets.Set(pck.Sync)
-
 		offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * int64(common.MaxDataSize)
-
 		_, err = file.WriteAt(pck.Data, offset)
 		if err != nil {
 			panic(err)
 		}
+
+		dataReceived += int(pck.DataLength)
 	}
 
 	lostPackets := make([]uint32, 0)

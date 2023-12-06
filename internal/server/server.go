@@ -37,6 +37,10 @@ func New() (*Server, error) {
 		return nil, err
 	}
 
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors: true,
+	})
+
 	return &Server{
 		sessions: make(map[common.SessionID]*info),
 		rsa:      key,
