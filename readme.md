@@ -15,7 +15,6 @@ A udp File transfer "Suite"
 - Better Readme
 
 ## Known Bugs / Errors / Fix list:
-- No Rsa Encryption for symmetric Key
 - Path Exploits (will get changed to only allow Files in curr exe Path or Configurable Path)
 
 ## Notes
