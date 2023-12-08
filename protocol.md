@@ -21,7 +21,7 @@
 
 ### Packet Structure
 37 Byte Secure Header | 5 Byte Packet Header | <= 446 Byte Data | 16 Byte chacha20poly1305 overhead
-
+                      | ---------------ENCRYPTED--------------- |
 
 ### Data
 
