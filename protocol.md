@@ -13,15 +13,21 @@
 8. If Client has all packets, or retries has exceeded limit. Client sends Ack Packet for last Sync
 9. Client and Server "close" / forget the connection
 
+
+### RSA Packet
+8 Byte Session ID | 4 Byte Encrypted Data Length | Encrypted Data (Symmetric Key)
+
 ### Secure Header | Unencrypted
-1 Byte RSA Flag | 24 Byte Nonce | 8 Byte Session ID | 4 Byte Encrypted Data Length
+24 Byte Nonce | 8 Byte Session ID | 4 Byte Encrypted Data Length
 
 ### Packet Header | Encrypted
 1 Byte Header Type Flag | 4 Byte Sync
 
 ### Packet Structure
-37 Byte Secure Header | 5 Byte Packet Header | <= 446 Byte Data | 16 Byte chacha20poly1305 overhead
-                      | ---------------ENCRYPTED--------------- |
+| 36 Byte | 5 Byte | <= 487 Byte | 16 Byte                               |
+| :------:|:------:|:-----------:|:-------------------------------------:|
+| Secure Header  | Packet Header | Data      | chacha20poly1305 overhead |
+|                | Encrypted     | Encrypted |                           |
 
 ### Data
 

@@ -1,6 +1,6 @@
 # Simple UDP File transfer
 
-A udp File transfer "Suite"
+A udp File transfer "Suite" with TCP Connection establishment
 
 ## Points that might or might not get looked at:
 - Performance Improvements (right now on my PC ~400 Mbit/s Throughput allocated to all requesting clients, localhost / not Network bound)
