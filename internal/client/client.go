@@ -2,19 +2,23 @@ package client
 
 import (
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
 
-	"github.com/Pablu23/Uftp/internal/common"
-
 	"github.com/kelindar/bitmap"
+
+	"github.com/Pablu23/Uftp/internal/common"
 )
 
 func SendPacket(pck *common.Packet, key [32]byte, conn *net.UDPConn) {
-	secPck := common.NewSymetricSecurePacket(key, pck)
+	secPck := common.NewSymmetricSecurePacket(key, pck)
 	if _, err := conn.Write(secPck.ToBytes()); err != nil {
 		panic(err)
 	}
@@ -27,9 +31,11 @@ func ReceivePacket(key [32]byte, conn *net.UDPConn) common.Packet {
 		panic(err)
 	}
 
-	secPck := common.SecurePacketFromBytes(bytes)
+	secPck, err := common.SecurePacketFromBytes(bytes)
+	if err != nil {
+		panic(err)
+	}
 	pck, err := secPck.ExtractPacket(key)
-
 	if err != nil {
 		fmt.Println(bytes)
 		panic(err)
@@ -55,13 +61,43 @@ func ReceivePacketWithTimeout(key [32]byte, conn *net.UDPConn) (common.Packet, b
 		return common.Packet{}, false
 	}
 
-	secPck := common.SecurePacketFromBytes(bytes)
+	secPck, err := common.SecurePacketFromBytes(bytes)
+	if err != nil {
+		panic(err)
+	}
 	pck, err := secPck.ExtractPacket(key)
 	if err != nil {
 		panic(err)
 	}
 
 	return pck, true
+}
+
+func StartConnection(sid common.SessionID, key [32]byte, address string) {
+	pubkey, err := os.ReadFile("pubkey.pem")
+	if err != nil {
+		panic(err)
+	}
+	block, _ := pem.Decode(pubkey)
+	pKey, _ := x509.ParsePKCS1PublicKey(block.Bytes)
+	keyExchangePck, err := common.NewRsaPacket(pKey, key, sid)
+	if err != nil {
+		panic(err)
+	}
+
+	var d net.Dialer
+	conn, err := d.Dial("tcp", address)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	conn.Write(keyExchangePck.ToBytes())
+
+	var buf [1024]byte
+	_, err = conn.Read(buf[:])
+	if err != nil && !errors.Is(err, io.EOF) {
+		panic(err)
+	}
 }
 
 func GetFile(path string, address string) {
@@ -73,11 +109,11 @@ func GetFile(path string, address string) {
 		panic(err)
 	}
 	key := [32]byte(k)
-	keyExchangePck := common.NewRsaPacket(request.Sid, key)
+
+	StartConnection(request.Sid, key, fmt.Sprintf("%v:13375", address))
 
 	// udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
-	udpAddr, err := net.ResolveUDPAddr("udp", address)
-
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%v:13374", address))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -88,11 +124,6 @@ func GetFile(path string, address string) {
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
-	}
-
-	_, err = conn.Write(keyExchangePck.ToBytes())
-	if err != nil {
-		panic(err)
 	}
 
 	SendPacket(request, key, conn)

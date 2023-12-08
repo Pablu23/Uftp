@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bufio"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
@@ -12,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Pablu23/Uftp/internal/common"
-
 	log "github.com/sirupsen/logrus"
+
+	"github.com/Pablu23/Uftp/internal/common"
 )
 
 type info struct {
@@ -33,7 +36,6 @@ type Server struct {
 
 func New() (*Server, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 4096)
-
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +48,20 @@ func New() (*Server, error) {
 		sessions: make(map[common.SessionID]*info),
 		rsa:      key,
 	}, nil
+}
+
+func (server *Server) SavePublicKeyPem() error {
+	file, err := os.Create("pubkey.pem")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	publicKeyPEM := &pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: x509.MarshalPKCS1PublicKey(&server.rsa.PublicKey),
+	}
+	pem.Encode(file, publicKeyPEM)
+	return nil
 }
 
 func (server *Server) sendPacket(conn *net.UDPConn, addr *net.UDPAddr, pck *common.Packet) {
@@ -61,7 +77,7 @@ func (server *Server) sendPacket(conn *net.UDPConn, addr *net.UDPAddr, pck *comm
 		return
 	}
 
-	secPck := common.NewSymetricSecurePacket(key, pck)
+	secPck := common.NewSymmetricSecurePacket(key, pck)
 	if _, err := conn.WriteToUDP(secPck.ToBytes(), addr); err != nil {
 		log.Error("Could not write Packet to UDP")
 		return
@@ -154,7 +170,6 @@ func (server *Server) handleAck(conn *net.UDPConn, addr *net.UDPAddr, pck *commo
 		server.mu.Unlock()
 		return
 	}
-
 }
 
 func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.Packet) {
@@ -189,7 +204,6 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.
 }
 
 func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *common.Packet) {
-
 	var path string
 	server.mu.Lock()
 	if info, ok := server.sessions[pck.Sid]; ok {
@@ -282,9 +296,51 @@ func (server *Server) handleShutdown(stop chan bool) {
 	}()
 }
 
+func (server *Server) handleConnection(conn net.Conn) {
+	reader := bufio.NewReader(conn)
+	var buf [2048]byte
+	r, err := reader.Read(buf[:])
+	if err != nil {
+		log.WithError(err).Warn("Could not read from Connection")
+		conn.Close()
+		return
+	}
+
+	// fmt.Println(buf)
+
+	rsaPck := common.RsaPacketFromBytes(buf[0:r])
+	key, err := rsaPck.ExtractKey(server.rsa)
+	if err != nil && !errors.Is(err, io.EOF) {
+		log.WithError(err).Warn("Could not extract Key")
+		return
+	}
+	server.mu.Lock()
+	server.sessions[rsaPck.Sid] = &info{
+		key: key,
+	}
+	server.mu.Unlock()
+	conn.Write([]byte("Yep"))
+	conn.Close()
+}
+
+func (server *Server) startManagement() {
+	listener, err := net.Listen("tcp", "0.0.0.0:13375")
+	if err != nil {
+		log.Fatal("Could not start listening on TCP 0.0.0.0:13375")
+	}
+	defer listener.Close()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.WithError(err).Warn("Could not accept TCP Connection")
+		}
+
+		go server.handleConnection(conn)
+	}
+}
+
 func (server *Server) Serve() {
 	udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
-
 	if err != nil {
 		log.Fatal("Could not resolve UDP Address")
 	}
@@ -301,6 +357,7 @@ func (server *Server) Serve() {
 	c := make(chan bool)
 	server.handleShutdown(c)
 	go server.startTimeout(c)
+	go server.startManagement()
 
 	for {
 		var buf [common.PacketSize]byte
@@ -310,32 +367,27 @@ func (server *Server) Serve() {
 			continue
 		}
 
-		secPck := common.SecurePacketFromBytes(buf[:])
-
-		if secPck.IsRsa == 0 {
-			var key [32]byte
-
-			server.mu.Lock()
-			if info, ok := server.sessions[secPck.Sid]; ok {
-				key = info.key
-			} else {
-				log.WithField("SessionID", hex.EncodeToString(secPck.Sid[:])).Warn("Invalid Session")
-				server.mu.Unlock()
-				continue
-			}
-			server.mu.Unlock()
-			pck, err := secPck.ExtractPacket(key)
-			if err != nil {
-				log.Error("Could not extract Packet from Secure Packet")
-			}
-			go server.handlePacket(conn, addr, &pck)
-		} else {
-			key := secPck.ExtractKey()
-			log.WithField("SessionID", hex.EncodeToString(secPck.Sid[:])).Info("New Session")
-			server.sessions[secPck.Sid] = &info{
-				key: [32]byte(key),
-			}
+		secPck, err := common.SecurePacketFromBytes(buf[:])
+		if err != nil {
+			log.WithError(err).Warn("Received invalid Packet")
+			continue
 		}
+
+		var key [32]byte
+		server.mu.Lock()
+		if info, ok := server.sessions[secPck.Sid]; ok {
+			key = info.key
+		} else {
+			log.WithField("SessionID", hex.EncodeToString(secPck.Sid[:])).Warn("Invalid Session")
+			server.mu.Unlock()
+			continue
+		}
+		pck, err := secPck.ExtractPacket(key)
+		if err != nil {
+			log.Error("Could not extract Packet from Secure Packet")
+		}
+		server.mu.Unlock()
+		go server.handlePacket(conn, addr, &pck)
 
 	}
 }

@@ -55,9 +55,42 @@ func TestSymetricSecurePacket(t *testing.T) {
 		DataLength: 3,
 	}
 
-	key := [32]byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	key := [32]byte{
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+	}
 
-	secPck := NewSymetricSecurePacket(key, &expect)
+	secPck := NewSymmetricSecurePacket(key, &expect)
 
 	packet, err := secPck.ExtractPacket(key)
 	if err != nil {
@@ -71,8 +104,6 @@ func TestSymetricSecurePacket(t *testing.T) {
 
 func TestSecurePacketFromBytes(t *testing.T) {
 	bytes := []byte{
-		//IsRsa
-		0,
 		// Nonce
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 		// Sid
@@ -83,14 +114,42 @@ func TestSecurePacketFromBytes(t *testing.T) {
 		101, 10, 1,
 	}
 
-	secPck := SecurePacketFromBytes(bytes)
-
 	expect := SecurePacket{
-		IsRsa:         0,
-		Nonce:         [24]byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+		Nonce: [24]byte{
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+		},
 		Sid:           [8]byte{255, 255, 255, 255, 255, 255, 255, 255},
 		DataLength:    3,
 		EncryptedData: []byte{101, 10, 1},
+	}
+
+	secPck, err := SecurePacketFromBytes(bytes)
+
+	if err != nil {
+		t.Fail()
 	}
 
 	if !cmp.Equal(secPck, expect) {
@@ -100,8 +159,6 @@ func TestSecurePacketFromBytes(t *testing.T) {
 
 func TestSecurePacketToBytes(t *testing.T) {
 	expect := []byte{
-		//IsRsa
-		0,
 		// Nonce
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 		// Sid
@@ -113,8 +170,32 @@ func TestSecurePacketToBytes(t *testing.T) {
 	}
 
 	secPck := SecurePacket{
-		IsRsa:         0,
-		Nonce:         [24]byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+		Nonce: [24]byte{
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+			1,
+		},
 		Sid:           [8]byte{255, 255, 255, 255, 255, 255, 255, 255},
 		DataLength:    3,
 		EncryptedData: []byte{101, 10, 1},

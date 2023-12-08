@@ -2,3 +2,4 @@ bin/
 testFiles/
 out/
 sha512sums.txt
+pubkey.pem
