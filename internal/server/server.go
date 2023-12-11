@@ -242,10 +242,7 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.
 	file := filepath.Join(server.parentFilePath, path)
 	file = filepath.Clean(file)
 
-	// fmt.Sprintf("%v\\*", server.parentFilePath)
 	matched, err := filepath.Match(filepath.Join(server.parentFilePath, "*"), file)
-
-	fmt.Println(filepath.Join(server.parentFilePath, "*"))
 
 	if err != nil || !matched {
 		log.WithFields(log.Fields{
@@ -382,8 +379,6 @@ func (server *Server) handleConnection(conn net.Conn) {
 		conn.Close()
 		return
 	}
-
-	// fmt.Println(buf)
 
 	rsaPck := common.RsaPacketFromBytes(buf[0:r])
 	key, err := rsaPck.ExtractKey(server.rsa)
