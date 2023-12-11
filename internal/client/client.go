@@ -206,10 +206,6 @@ func GetFile(path string, address string) {
 		}
 	})
 
-	for _, i := range lostPackets {
-		fmt.Println(i)
-	}
-
 	lastPacket := ackPck
 
 	for {
