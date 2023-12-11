@@ -14,8 +14,5 @@ A udp File transfer "Suite" with TCP Connection establishment
 - Better Cli support
 - Better Readme
 
-## Known Bugs / Errors / Fix list:
-- Path Exploits (will get changed to only allow Files in curr exe Path or Configurable Path)
-
 ## Notes
 - Udp max packet size is set with 504
