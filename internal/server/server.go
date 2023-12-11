@@ -8,10 +8,12 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -29,29 +31,87 @@ type info struct {
 }
 
 type Server struct {
-	sessions map[common.SessionID]*info
-	mu       sync.Mutex
-	rsa      *rsa.PrivateKey
+	sessions       map[common.SessionID]*info
+	mu             sync.Mutex
+	rsa            *rsa.PrivateKey
+	options        *Options
+	parentFilePath string
 }
 
-func New() (*Server, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
+func New(opts ...func(*Options)) (*Server, error) {
+	options := NewDefaultOptions()
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	var key *rsa.PrivateKey
+	var err error
+	if options.LoadPrivkey {
+		privKey, err := os.ReadFile(options.PrivKeyPath)
+		if err != nil {
+			return nil, err
+		}
+
+		block, _ := pem.Decode(privKey)
+		key, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
+	} else {
+		key, err = rsa.GenerateKey(rand.Reader, 4096)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	parentFilePath, err := filepath.Abs(options.Datapath)
 	if err != nil {
 		return nil, err
+	}
+
+	server := &Server{
+		sessions:       make(map[common.SessionID]*info),
+		rsa:            key,
+		options:        options,
+		parentFilePath: parentFilePath,
+	}
+
+	if options.SavePubKey {
+		err = server.SavePublicKeyPem()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if options.SavePrivKey {
+		err = server.SavePrivateKeyPem()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	log.SetFormatter(&log.TextFormatter{
 		ForceColors: true,
 	})
 
-	return &Server{
-		sessions: make(map[common.SessionID]*info),
-		rsa:      key,
-	}, nil
+	return server, nil
+}
+
+func (server *Server) SavePrivateKeyPem() error {
+	file, err := os.Create(server.options.PrivKeyPath)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(server.rsa),
+	}
+	pem.Encode(file, privateKeyPEM)
+	return nil
 }
 
 func (server *Server) SavePublicKeyPem() error {
-	file, err := os.Create("pubkey.pem")
+	file, err := os.Create(server.options.PubKeyPath)
 	if err != nil {
 		return err
 	}
@@ -179,9 +239,23 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.
 		return
 	}
 
-	fi, err := os.Stat(path)
+	file := filepath.Join(server.parentFilePath, path)
+	file = filepath.Clean(file)
+
+	matched, err := filepath.Match(fmt.Sprintf("%v\\*", server.parentFilePath), file)
+
+	if err != nil || !matched {
+		log.WithFields(log.Fields{
+			"ParentFilePath":    server.parentFilePath,
+			"RequestedFilePath": path,
+			"CleanedFilePath":   file,
+		}).WithError(err).Warn("Requesting File out of Path")
+		return
+	}
+
+	fi, err := os.Stat(file)
 	if err != nil {
-		log.WithError(err).WithField("File Path", path).Error("Unable to open File")
+		log.WithError(err).WithField("File Path", file).Error("Unable to open File")
 		return
 	}
 
@@ -192,7 +266,7 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.
 
 	server.mu.Lock()
 	if info, ok := server.sessions[pck.Sid]; ok {
-		info.path = path
+		info.path = file
 		info.lastSync = ptePck.Sync
 		info.lastPckSend = ptePck.Flag
 		server.mu.Unlock()
@@ -321,6 +395,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 	server.mu.Unlock()
 	conn.Write([]byte("Yep"))
 	conn.Close()
+	log.WithField("SessionID", hex.EncodeToString(rsaPck.Sid[:])).Info("Started Session")
 }
 
 func (server *Server) startManagement() {
@@ -340,7 +415,7 @@ func (server *Server) startManagement() {
 }
 
 func (server *Server) Serve() {
-	udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%v:13374", server.options.Address))
 	if err != nil {
 		log.Fatal("Could not resolve UDP Address")
 	}

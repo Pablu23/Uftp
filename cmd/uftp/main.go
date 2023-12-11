@@ -9,11 +9,11 @@ import (
 
 func main() {
 	if os.Args[1] == "server" {
-		server, err := server.New()
-		if err != nil {
-			panic(err)
-		}
-		err = server.SavePublicKeyPem()
+		server, err := server.New(func(o *server.Options) {
+			o.SavePrivKey = false
+			o.LoadPrivkey = true
+			o.PrivKeyPath = "privkey.pem"
+		})
 		if err != nil {
 			panic(err)
 		}
