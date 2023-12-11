@@ -242,7 +242,10 @@ func (server *Server) sendPTE(conn *net.UDPConn, addr *net.UDPAddr, pck *common.
 	file := filepath.Join(server.parentFilePath, path)
 	file = filepath.Clean(file)
 
-	matched, err := filepath.Match(fmt.Sprintf("%v\\*", server.parentFilePath), file)
+	// fmt.Sprintf("%v\\*", server.parentFilePath)
+	matched, err := filepath.Match(filepath.Join(server.parentFilePath, "*"), file)
+
+	fmt.Println(filepath.Join(server.parentFilePath, "*"))
 
 	if err != nil || !matched {
 		log.WithFields(log.Fields{
