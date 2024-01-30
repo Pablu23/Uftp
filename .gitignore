@@ -1,6 +1,7 @@
-bin/
-testFiles/
-out/
+bin/*
+testFiles/*
+out/*
 sha512sums.txt
 pubkey.pem
 privkey.pem
+.DS_Store

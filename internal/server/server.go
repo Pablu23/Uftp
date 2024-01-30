@@ -101,12 +101,21 @@ func (server *Server) SavePrivateKeyPem() error {
 		return err
 	}
 
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close File")
+		}
+	}(file)
+
 	privateKeyPEM := &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(server.rsa),
 	}
-	pem.Encode(file, privateKeyPEM)
+	err = pem.Encode(file, privateKeyPEM)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -115,12 +124,20 @@ func (server *Server) SavePublicKeyPem() error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close File")
+		}
+	}(file)
 	publicKeyPEM := &pem.Block{
 		Type:  "RSA PUBLIC KEY",
 		Bytes: x509.MarshalPKCS1PublicKey(&server.rsa.PublicKey),
 	}
-	pem.Encode(file, publicKeyPEM)
+	err = pem.Encode(file, publicKeyPEM)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -138,8 +155,13 @@ func (server *Server) sendPacket(conn *net.UDPConn, addr *net.UDPAddr, pck *comm
 	}
 
 	secPck := common.NewSymmetricSecurePacket(key, pck)
-	if _, err := conn.WriteToUDP(secPck.ToBytes(), addr); err != nil {
-		log.Error("Could not write Packet to UDP")
+	if _, err := conn.WriteToUDP(secPck.ToBytes(), addr); err != nil { // && !errors.Is(err)
+		log.WithError(err).Error("Could not write Packet to UDP")
+		fmt.Println(err)
+		return
+	} else if err != nil && errors.Is(err, bufio.ErrBufferFull) {
+		time.Sleep(time.Millisecond * 10)
+		server.sendPacket(conn, addr, pck)
 		return
 	}
 }
@@ -184,7 +206,12 @@ func (server *Server) resend(conn *net.UDPConn, addr *net.UDPAddr, pck *common.P
 		log.WithError(err).WithField("File Path", path).Error("Unable to open File")
 		return
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close File")
+		}
+	}(file)
 
 	// This should be different
 	offset := (int64(resend) - 3) * (int64(common.MaxDataSize))
@@ -297,7 +324,12 @@ func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *common
 		log.WithError(err).WithField("File Path", path).Error("Unable to open File")
 		return
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close File")
+		}
+	}(file)
 
 	buf := make([]byte, common.MaxDataSize)
 	filePck := pck
@@ -331,11 +363,11 @@ func (server *Server) sendData(conn *net.UDPConn, addr *net.UDPAddr, pck *common
 	server.sendPacket(conn, addr, eodPck)
 }
 
-func (server *Server) startTimeout(interuptChan chan bool) {
+func (server *Server) startTimeout(interruptChan chan bool) {
 	running := true
 	for running {
 		select {
-		case c := <-interuptChan:
+		case c := <-interruptChan:
 			if c {
 				running = false
 			}
@@ -379,7 +411,10 @@ func (server *Server) handleConnection(conn net.Conn) {
 	r, err := reader.Read(buf[:])
 	if err != nil {
 		log.WithError(err).Warn("Could not read from Connection")
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close connection")
+		}
 		return
 	}
 
@@ -396,8 +431,17 @@ func (server *Server) handleConnection(conn net.Conn) {
 		key: key,
 	}
 	server.mu.Unlock()
-	conn.Write([]byte("Yep"))
-	conn.Close()
+	_, err = conn.Write([]byte("Yep"))
+	if err != nil {
+		log.WithError(err).Error("Could not write to TCP connection")
+		return
+	}
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close TCP connection")
+		}
+	}(conn)
 	log.WithField("SessionID", hex.EncodeToString(rsaPck.Sid[:])).Info("Started Session")
 }
 
@@ -406,7 +450,13 @@ func (server *Server) startManagement() {
 	if err != nil {
 		log.Fatal("Could not start listening on TCP 0.0.0.0:13375")
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			log.WithError(err).Error("Could not close TCP Listener")
+		}
+	}(listener)
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
