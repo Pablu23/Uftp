@@ -41,8 +41,6 @@ func ReceivePacket(key [32]byte, conn *net.UDPConn) common.Packet {
 		panic(err)
 	}
 
-	// fmt.Printf("Decrypted Packet, Sync: %v, Type: %v\n", pck.Sync, pck.Flag)
-
 	return pck
 }
 
@@ -112,7 +110,6 @@ func GetFile(path string, address string) {
 
 	StartConnection(request.Sid, key, fmt.Sprintf("%v:13375", address))
 
-	// udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:13374")
 	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%v:13374", address))
 	if err != nil {
 		fmt.Println(err)
@@ -206,10 +203,6 @@ func GetFile(path string, address string) {
 		}
 	})
 
-	for _, i := range lostPackets {
-		fmt.Println(i)
-	}
-
 	lastPacket := ackPck
 
 	for {
@@ -231,7 +224,6 @@ func GetFile(path string, address string) {
 			}
 
 			offset := (int64(pck.Sync) - int64(ackPck.Sync+1)) * int64(common.MaxDataSize)
-			// fmt.Printf("Sync: %v, Offset: %v\n", pck.sync, offset)
 
 			_, err = file.WriteAt(pck.Data, offset)
 			if err != nil {
